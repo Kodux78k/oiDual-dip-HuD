@@ -337,16 +337,16 @@
 
     /* Mantra Footer */
     #mantra-toggle {
-      position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); z-index: 1;
+      position: fixed; bottom: 33px; left: 50%; transform: translateX(-50%); z-index: 1;
       background: rgba(15, 15, 15, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.06);
       padding: 10px 24px; border-radius: 100px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.6); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); min-width: 280px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); min-width: 220px;
     }
     #mantra-toggle:hover { background: rgba(25, 25, 25, 0.9); border-color: rgba(255,255,255,0.15); transform: translateX(-50%) translateY(-2px); }
-    #mantra-text { font-style: italic; color: #777; font-size: 0.85rem; white-space: nowrap; transition: all 0.4s ease; }
-    #mantra-toggle.collapsed { background: transparent; border-color: rgba(255, 215, 0, 0.3); box-shadow: 0 0 20px rgba(255, 215, 0, 0.05); padding: 10px 40px; }
-    #mantra-toggle.collapsed #mantra-text { font-style: normal; font-weight: 600; letter-spacing: 3px; color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+    #mantra-text { font-style: italic; color: #777; font-size: 0.78rem; white-space: nowrap; transition: all 0.4s ease; }
+    #mantra-toggle.collapsed { background: transparent; border-color: rgba(255, 215, 0, 0.3); box-shadow: 0 0 20px rgba(255, 215, 0, 0.05); }
+
     .fade-out { opacity: 0; transform: translateY(5px); }
     .fade-in { opacity: 1; transform: translateY(0); }
     body.zen-mode .response-container, body.zen-mode .input-container, body.zen-mode .top-info, body.zen-mode .svg-container { opacity: 0; pointer-events: none; filter: blur(12px); transition: all 0.6s ease; }
@@ -1664,8 +1664,8 @@
     <div id="pulsos"></div>
   </div>
 
-  <p class="footer">Do seu jeito. <strong>Sempre</strong> único. <strong>Sempre</strong> seu.</p>
-</div>
+  <!-- <p class="footer">Do seu jeito. <strong>Sempre</strong> único. <strong>Sempre</strong> seu.</p>
+</div> --!>
 
 <!-- lightweight web component modal for remote/local pages -->
 <script>
