@@ -1279,89 +1279,151 @@
       speechSynthesis.speak(u);
     };
 
-    const splitBlocks = text => {
-      if (!text || !text.trim()) return [['Sem conteúdo.','','']];
-      let paras = text.split(/\n\s*\n/).filter(p=>p.trim());
-      if (paras.length % 3 !== 0) {
-        const sens = paras.join(' ').match(/[^\.!\?]+[\.!\?]+/g) || [paras.join(' ')];
-        paras = sens.map(s=>s.trim());
-      }
-      const groups = [];
-      for (let i=0;i<paras.length;i+=3) groups.push(paras.slice(i,i+3));
-      return groups;
-    };
+   /* === PATCH JS: substituir splitBlocks + renderPaginatedResponse + speakPage/changePage/showLoading === */
 
-    const renderPaginatedResponse = text => {
-      speechSynthesis.cancel();
-      autoAdvance = true;
-      const respEl = document.getElementById('response');
-      respEl.querySelectorAll('.page:not(.initial)').forEach(p=>p.remove());
-      pages = [];
-      const groups = splitBlocks(text);
-      const controls = respEl.querySelector('.response-controls');
-      const titles = ['🎁 Recompensa Inicial','👁️ Exploração e Curiosidade','⚡ Antecipação Vibracional'];
+/* simples parser markdown leve (bold, italic, inline code, links, codeblocks, lists) */
+function mdToHtml(md){
+  if(!md) return '';
+  // code block ``` ``` 
+  md = md.replace(/```([^`]*)```/gs, function(_, code){ return '<pre><code>' + escapeHtml(code) + '</code></pre>'; });
+  // inline code `code`
+  md = md.replace(/`([^`]+)`/g, function(_, c){ return '<code>' + escapeHtml(c) + '</code>'; });
+  // links [text](url)
+  md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  // bold **text**
+  md = md.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // italic *text*
+  md = md.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // unordered lists (- or *)
+  md = md.replace(/(^|\n)[\-\*]\s+(.+?)(?=\n|$)/g, function(_, pre, item){ return pre + '<li>' + item + '</li>'; });
+  md = md.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+  // paragraphs: remaining single newlines -> <br>, double newlines -> separate paragraphs
+  const paras = md.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  return paras.map(p => '<p>' + p.replace(/\n/g,'<br>') + '</p>').join('');
+}
 
-      groups.forEach((tris, gi) => {
-        const page = createEl('div', gi===0?'page active':'page');
-        tris.forEach((body, j) => {
-          const cls = j===0?'intro': j===1?'middle':'ending';
-          const b = createEl('div','response-block '+cls,`<h3>${titles[j]}</h3><p>${body}</p>`);
-          const meta = createEl('div','meta');
-          const crystalBtn = createEl('button','crystal-btn','✶');
-          crystalBtn.title = 'Cristalizar';
-          crystalBtn.addEventListener('click', (ev)=>{
-            ev.stopPropagation(); cristalizar({ title: titles[j], content: body });
-            crystalBtn.innerText = '✓'; setTimeout(()=> crystalBtn.innerText = '✶', 1200);
-          });
-          meta.appendChild(crystalBtn); b.appendChild(meta);
+/* divide texto em grupos de 3 blocos (fallback para sentenças) */
+const splitBlocks = text => {
+  if (!text || !text.trim()) return [['Sem conteúdo.','','']];
+  let paras = text.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+  // se muitos pequenos parágrafos e não múltiplo de 3, quebra por sentenças
+  if (paras.length < 3 || paras.length % 3 !== 0) {
+    const sens = text.match(/[^\.!\?]+[\.!\?]+/g) || [text];
+    paras = sens.map(s=>s.trim()).filter(Boolean);
+  }
+  const groups = [];
+  for (let i=0;i<paras.length;i+=3) groups.push(paras.slice(i,i+3));
+  return groups;
+};
 
-          b.dataset.state = '';
-          b.addEventListener('click', () => {
-            if (!b.dataset.state) {
-              speechSynthesis.cancel(); speakText(body); b.classList.add('clicked'); b.dataset.state = 'spoken';
-            } else {
-              b.classList.add('expanded'); b.dataset.state = '';
-              if (!assistantEnabled) {
-                assistantEnabled = true; localStorage.setItem('di_assistantEnabled','1');
-                updateToggleBtnVisual();
-                if (training && trainingActive) conversation.unshift({ role:'system', content: training });
-              }
-              const blockText = `${titles[j]}\n\n${body}`;
-              showLoading('Pulso em Expansão...'); speakText('Pulso em Expansão...');
-              conversation.push({ role:'user', content: blockText });
-              callAI();
-            }
-          });
-          page.appendChild(b);
-        });
-        page.appendChild(createEl('p','footer-text',`<em>Do seu jeito. <strong>Sempre</strong> único. <strong>Sempre</strong> seu.</em>`));
-        respEl.insertBefore(page, controls);
-        pages.push(page);
+const renderPaginatedResponse = text => {
+  // cancel TTS ongoing
+  try { speechSynthesis.cancel(); } catch(e){}
+  autoAdvance = true;
+  const respEl = document.getElementById('response');
+  // remove previous generated pages but keep the controls and initial page if present
+  Array.from(respEl.querySelectorAll('.page')).forEach(p => {
+    if (!p.classList.contains('initial')) p.remove();
+  });
+  pages = [];
+  const groups = splitBlocks(text);
+  const controls = respEl.querySelector('.response-controls');
+  const titles = ['🎁 Recompensa Inicial','👁️ Exploração e Curiosidade','⚡ Antecipação Vibracional'];
+
+  groups.forEach((tris, gi) => {
+    const page = createEl('div', gi===0 ? 'page active' : 'page');
+    // content container
+    tris.forEach((body, j) => {
+      const cls = j===0 ? 'intro' : j===1 ? 'middle' : 'ending';
+      // convert markdown-lite to html inside block-body
+      const htmlBody = mdToHtml(body);
+      const b = createEl('div','response-block '+cls, `<h3>${titles[j]}</h3><div class="block-body">${htmlBody}</div>`);
+      const meta = createEl('div','meta');
+      const crystalBtn = createEl('button','crystal-btn','✶');
+      crystalBtn.title = 'Cristalizar';
+      crystalBtn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        cristalizar({ title: titles[j], content: body });
+        crystalBtn.innerText = '✓'; setTimeout(()=> crystalBtn.innerText = '✶', 1200);
       });
-      currentPage = 0; document.getElementById('pageIndicator').textContent = `1 / ${pages.length}`;
-      speakPage(0);
-    };
+      meta.appendChild(crystalBtn);
+      b.appendChild(meta);
 
-    const speakPage = i => {
-      const page = pages[i]; if (!page) return;
-      const body = Array.from(page.querySelectorAll('.response-block p')).map(p=>p.innerText).join(' ');
-      speakText(body, () => {
-        if (!autoAdvance) return;
-        if (i < pages.length - 1) { changePage(1); speakPage(i+1); } else { speakText('Sempre único, sempre seu.'); }
+      // state & click behavior (TTS / expand -> trigger AI)
+      b.dataset.state = '';
+      b.addEventListener('click', (ev) => {
+        // prevent inner meta buttons from toggling
+        if (ev.target.closest('.meta')) return;
+        const alreadySpoken = b.dataset.state === 'spoken';
+        if (!alreadySpoken) {
+          try { speechSynthesis.cancel(); } catch(e){}
+          // speak only visible text (collapse tags removed)
+          const textToSpeak = b.querySelector('.block-body') ? b.querySelector('.block-body').innerText : body;
+          speakText(textToSpeak);
+          b.classList.add('clicked'); b.dataset.state = 'spoken';
+        } else {
+          // expand and call AI
+          b.classList.add('expanded'); b.dataset.state = '';
+          if (!assistantEnabled) {
+            assistantEnabled = true; localStorage.setItem('di_assistantEnabled','1');
+            updateToggleBtnVisual();
+            if (training && trainingActive) conversation.unshift({ role:'system', content: training });
+          }
+          const blockText = `${titles[j]}\n\n${body}`;
+          showLoading('Pulso em Expansão...');
+          speakText('Pulso em Expansão...');
+          conversation.push({ role:'user', content: blockText });
+          callAI();
+        }
       });
-    };
-    const changePage = offset => {
-      const np = currentPage + offset; if (np<0||np>=pages.length) return;
-      pages[currentPage].classList.remove('active'); pages[np].classList.add('active');
-      currentPage = np; document.getElementById('pageIndicator').textContent = `${currentPage+1} / ${pages.length}`;
-    };
-    const showLoading = msg => {
-      const respEl = document.getElementById('response');
-      const controls = respEl.querySelector('.response-controls');
-      respEl.querySelectorAll('.page:not(.initial)').forEach(p=>p.remove());
-      const page = createEl('div','page active'); page.appendChild(createEl('p','footer-text',msg));
-      respEl.insertBefore(page, controls); pages = [page]; currentPage = 0; document.getElementById('pageIndicator').textContent = '…';
-    };
+
+      page.appendChild(b);
+    });
+
+    page.appendChild(createEl('p','footer-text',`<em>Do seu jeito. <strong>Sempre</strong> único. <strong>Sempre</strong> seu.</em>`));
+    // insert new page before controls (so controls always at bottom)
+    if (controls && controls.parentNode) respEl.insertBefore(page, controls);
+    else respEl.appendChild(page);
+    pages.push(page);
+  });
+
+  currentPage = 0;
+  const pi = document.getElementById('pageIndicator');
+  if (pi) pi.textContent = `1 / ${pages.length}`;
+  // start speaking first page
+  speakPage(0);
+};
+
+const speakPage = i => {
+  const page = pages[i]; if (!page) return;
+  const body = Array.from(page.querySelectorAll('.block-body')).map(n => n.innerText).join(' ');
+  speakText(body, () => {
+    if (!autoAdvance) return;
+    if (i < pages.length - 1) { changePage(1); speakPage(i+1); } else { speakText('Sempre único, sempre seu.'); }
+  });
+};
+
+const changePage = offset => {
+  const np = currentPage + offset; if (np<0 || np>=pages.length) return;
+  if (pages[currentPage]) pages[currentPage].classList.remove('active');
+  if (pages[np]) pages[np].classList.add('active');
+  currentPage = np;
+  const pi = document.getElementById('pageIndicator');
+  if (pi) pi.textContent = `${currentPage+1} / ${pages.length}`;
+};
+
+const showLoading = msg => {
+  const respEl = document.getElementById('response');
+  const controls = respEl.querySelector('.response-controls');
+  respEl.querySelectorAll('.page').forEach(p => { if(!p.classList.contains('initial')) p.remove(); });
+  const page = createEl('div','page active'); page.appendChild(createEl('p','footer-text',msg));
+  if (controls && controls.parentNode) respEl.insertBefore(page, controls);
+  else respEl.appendChild(page);
+  pages = [page];
+  currentPage = 0;
+  const pi = document.getElementById('pageIndicator');
+  if (pi) pi.textContent = '…';
+};
 
     async function callAI() {
       apiKey = localStorage.getItem('di_apiKey') || apiKey;
